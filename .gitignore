@@ -1,0 +1,26 @@
+# Per-replay outputs — generated, never committed
+output/
+input/
+
+# Replay files themselves (privacy: they contain player names)
+*.vrf
+
+# Intermediate dumps
+decode-full.txt
+
+# Parser binary — distributed via GitHub Releases, not in git history
+bin/*.exe
+bin/*.dll
+bin/*.pdb
+bin/*.json
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.swp
+.vscode/
+.idea/
+
+# Node — none expected, just in case
+node_modules/
+package-lock.json

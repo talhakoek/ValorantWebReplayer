@@ -1,0 +1,1808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ValorantWebReplayer</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #07090d;
+    --bg-2: #0b0e14;
+    --panel: #11141d;
+    --panel-2: #1a1e2a;
+    --line: #232838;
+    --text: #eef1f7;
+    --muted: #7c869c;
+    --accent: #ff4655;
+    --team-a: #5ac8fa;  /* defenders / blue */
+    --team-b: #ff5252;  /* attackers / red */
+    --kill: #ff4655;
+    --spike: #ffb240;
+    --ult: #c47bff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased; overflow: hidden; }
+  .app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
+  .stage { position: relative; overflow: hidden; background: var(--bg-2); }
+  canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+
+  .sidebar { background: var(--panel); border-left: 1px solid var(--line);
+    display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+  .sb-head { padding: 16px 18px 14px; border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(255,70,85,0.05), transparent); }
+  .sb-head h1 { margin: 0 0 4px; font-size: 14px; font-weight: 700; letter-spacing: 0.05em;
+    text-transform: uppercase; }
+  .sb-head h1 span { color: var(--accent); }
+  .sb-head .sub { color: var(--muted); font-size: 11px; }
+
+  .sb-section { padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .sb-section h2 { margin: 0 0 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+    color: var(--muted); text-transform: uppercase; }
+
+  .rounds { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .rounds button { padding: 8px 0; font-size: 11px; font-variant-numeric: tabular-nums;
+    background: var(--panel-2); border: 1px solid transparent; color: var(--text);
+    border-radius: 5px; cursor: pointer; font-family: inherit; }
+  .rounds button:hover { background: #242938; }
+  .rounds button.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+
+  .teams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .team h3 { margin: 0 0 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    text-transform: uppercase; padding-bottom: 4px; border-bottom: 2px solid; }
+  .team.a h3 { color: var(--team-a); border-color: var(--team-a); }
+  .team.b h3 { color: var(--team-b); border-color: var(--team-b); }
+  .prow { display: grid; grid-template-columns: 28px 1fr; gap: 8px; align-items: center;
+    padding: 4px 0; font-size: 11px; cursor: default; }
+  .prow .agent-ico { width: 28px; height: 28px; border-radius: 5px; object-fit: cover;
+    background: var(--panel-2); display: block; }
+  .prow .p-meta { min-width: 0; }
+  .prow .p-name { font-weight: 600; color: var(--text); font-size: 11.5px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .prow .p-kda { color: var(--muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+
+  .feed { max-height: 180px; overflow-y: auto; }
+  .feed::-webkit-scrollbar { width: 6px; }
+  .feed::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+  .frow { display: grid; grid-template-columns: 38px 1fr auto; gap: 8px; padding: 4px 0;
+    font-size: 11px; align-items: center; border-bottom: 1px dashed var(--line); }
+  .frow:last-child { border: 0; }
+  .frow .t { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .frow .ic { width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 4px; font-size: 11px; }
+  .frow.kill .ic { background: rgba(255,70,85,0.15); color: var(--kill); }
+  .frow.spike .ic { background: rgba(255,178,64,0.15); color: var(--spike); }
+  .frow.ult .ic { background: rgba(196,123,255,0.15); color: var(--ult); }
+  .frow.round .ic { background: var(--panel-2); color: var(--text); font-weight: 600; }
+  .frow.cur { background: rgba(255,70,85,0.08); margin: 0 -8px; padding-left: 8px; padding-right: 8px;
+    border-radius: 4px; }
+
+  .stats { font-size: 11px; color: var(--muted); display: grid;
+    grid-template-columns: auto 1fr; gap: 4px 14px; }
+  .stats b { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+
+  .ctrls { padding: 14px 18px 18px; display: flex; flex-direction: column; gap: 12px;
+    border-top: 1px solid var(--line); background: var(--bg-2); margin-top: auto; }
+  .timer { font-variant-numeric: tabular-nums; font-size: 28px; font-weight: 700;
+    text-align: center; letter-spacing: 0.03em; }
+  .timer .ms { font-size: 14px; color: var(--muted); font-weight: 500; }
+  .scrubrow { display: flex; align-items: center; gap: 10px; }
+  input[type="range"] { flex: 1; accent-color: var(--accent); height: 6px; }
+  button { background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+    padding: 8px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit;
+    transition: all 0.12s ease; }
+  button:hover { background: #242938; border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff;
+    font-weight: 600; min-width: 44px; }
+  button.primary:hover { background: #ff5a68; }
+  button.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; }
+
+  .loading { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(7,9,13,0.92); z-index: 10; font-size: 13px; color: var(--muted);
+    flex-direction: column; gap: 12px; }
+  .loading .bar { width: 200px; height: 3px; background: var(--line); border-radius: 2px; overflow: hidden; }
+  .loading .bar i { display: block; height: 100%; background: var(--accent); width: 0%;
+    transition: width 0.2s ease; }
+
+  .legend { position: absolute; top: 12px; left: 12px; background: rgba(7,9,13,0.78);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line);
+    font-size: 11px; color: var(--muted); }
+  .legend b { color: var(--text); font-weight: 600; font-size: 12px; }
+  .legend .map-name { font-size: 14px; letter-spacing: 0.05em; }
+
+  .flash { position: absolute; pointer-events: none; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="stage">
+    <canvas id="mini"></canvas>
+    <div class="legend">
+      <div class="map-name"><b id="map-name">Split</b></div>
+      <div>round <b id="rd">—</b> · <span id="bounds">—</span></div>
+    </div>
+    <div class="loading" id="loading">
+      <div id="ld-msg">loading…</div>
+      <div class="bar"><i id="ld-bar"></i></div>
+    </div>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sb-head">
+      <h1>Valorant<span>Web</span>Replayer</h1>
+      <div class="sub" id="src">—</div>
+    </div>
+
+    <div class="sb-section">
+      <h2 id="rd-head">Rounds</h2>
+      <div class="rounds" id="rounds"></div>
+    </div>
+
+    <div class="sb-section">
+      <h2>Teams</h2>
+      <div class="teams">
+        <div class="team a"><h3>Team A</h3><div id="team-a"></div></div>
+        <div class="team b"><h3>Team B</h3><div id="team-b"></div></div>
+      </div>
+    </div>
+
+    <div class="sb-section" style="flex: 1; min-height: 0; display: flex; flex-direction: column;">
+      <h2>Event Feed</h2>
+      <div class="feed" id="feed"></div>
+    </div>
+
+    <div class="ctrls">
+      <div class="timer">
+        <span id="timer">0:00</span><span class="ms" id="timer-ms">.0</span>
+      </div>
+      <div class="scrubrow">
+        <button id="playBtn" class="primary">▶</button>
+        <input type="range" id="scrub" min="0" max="100" value="0">
+      </div>
+      <div class="row">
+        <button id="speed">1×</button>
+        <button id="trails" class="toggle on">trails</button>
+        <button id="arrows" class="toggle on" title="Movement-direction triangles on each dot + real aim line at kill moments">direction</button>
+        <button id="util" class="toggle">utility</button>
+        <button id="prev">⟨ round</button>
+        <button id="next">round ⟩</button>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+(async function main() {
+  const ld = document.getElementById('ld-msg');
+  const ldb = document.getElementById('ld-bar');
+  const step = (pct, msg) => { ld.textContent = msg; ldb.style.width = pct + '%'; };
+
+  step(5, 'fetching data…');
+  const loadImg = (src) => new Promise((res) => {
+    const i = new Image();
+    i.crossOrigin = 'anonymous';
+    i.onload = () => res(i); i.onerror = () => res(null); i.src = src;
+  });
+
+  // meta.json carries `mapUrl` (UE path) emitted by extract-stream.mjs.
+  // We resolve that → valorant-api.com map record at runtime, then pull both
+  // the minimap PNG and the world→canvas projection multipliers from it.
+  // No static map-info.json, no static split-minimap.png. Override per
+  // session via ?map=Bind in the URL.
+  const meta = await fetch('meta.json').then(r => r.json()).catch(() => ({}));
+  const allMapsResp = await fetch('https://valorant-api.com/v1/maps').then(r => r.json()).catch(() => ({ data: [] }));
+  const allMaps = allMapsResp.data || [];
+  const urlMapOverride = new URLSearchParams(location.search).get('map');
+  let mapRecord = null;
+  if (urlMapOverride) {
+    mapRecord = allMaps.find(m => (m.displayName || '').toLowerCase() === urlMapOverride.toLowerCase());
+  }
+  if (!mapRecord && meta.mapUrl) {
+    mapRecord = allMaps.find(m => (m.mapUrl || '').toLowerCase() === meta.mapUrl.toLowerCase());
+  }
+  if (!mapRecord && meta.mapName) {
+    mapRecord = allMaps.find(m => (m.displayName || '').toLowerCase() === meta.mapName.toLowerCase());
+  }
+  if (!mapRecord) {
+    console.warn('[viewer] map unknown — defaulting to first map. Use ?map=Split to override.');
+    mapRecord = allMaps[0] || {};
+  }
+  const mapInfo = {
+    displayName: mapRecord.displayName || 'Unknown',
+    xMultiplier: mapRecord.xMultiplier,
+    yMultiplier: mapRecord.yMultiplier,
+    xScalarToAdd: mapRecord.xScalarToAdd,
+    yScalarToAdd: mapRecord.yScalarToAdd,
+  };
+
+  // match-details.json is OPTIONAL. When absent we fall back to BombPlayerState
+  // ProfileName + CompetitiveTier + team — anonymous-roster mode.
+  const [data, events, mapImg, mDetails, spikeImg, abilities] = await Promise.all([
+    fetch('positions.json').then(r => r.json()),
+    fetch('events.json').then(r => r.json()).catch(() => []),
+    loadImg(mapRecord.displayIcon || ''),
+    fetch('match-details.json').then(r => r.json()).catch(() => null),
+    loadImg('spike.png'),
+    fetch('abilities.json').then(r => r.json()).catch(() => []),
+  ]);
+  // Agents lookup, live from valorant-api, keyed by characterId for the
+  // (optional) match-details path. Anonymous mode never reads it.
+  const agentsListResp = await fetch('https://valorant-api.com/v1/agents?isPlayableCharacter=true').then(r => r.json()).catch(() => ({ data: [] }));
+  const agents = {};
+  for (const a of (agentsListResp.data || [])) {
+    agents[(a.uuid || '').toLowerCase()] = { name: a.displayName, icon: a.displayIcon, role: (a.role || {}).displayName || '' };
+  }
+  // Rank tiers for the anonymous sidebar (small tier-icon next to each row).
+  const tiersResp = await fetch('https://valorant-api.com/v1/competitivetiers').then(r => r.json()).catch(() => ({ data: [] }));
+  const latestTiers = ((tiersResp.data || []).slice(-1)[0] || {}).tiers || [];
+  const rankByTier = {};
+  for (const t of latestTiers) rankByTier[t.tier] = { name: t.tierName, icon: t.largeIcon || t.smallIcon, color: '#' + (t.color || 'ffffff').slice(0, 6) };
+  step(35, 'building index…');
+  await new Promise(r => requestAnimationFrame(r));
+
+  document.getElementById('map-name').textContent = mapInfo.displayName;
+
+  // === Build per-sample bomb clock + per-actor raw timelines ==================
+  // Bucketing was throwing away 99.5% of the data — keep every raw sample
+  // per actor in compact TypedArrays and binary-search by stream index for
+  // true sample-level interpolation.
+  const samples = data.samples; // [ts, guid, x, y, yaw]
+  const N = samples.length;
+
+  const guidList = data.meta.uniqueGuids;
+  const guidIdx = new Map(guidList.map((g, i) => [g, i]));
+  const numActors = guidList.length;
+  const bombStates = data.bombStates || [];
+
+  // Pass 1: count samples per actor + build per-sample bomb clock.
+  // Bomb clock updates only ~10 Hz but samples arrive at ~80+ Hz. Forward-fill
+  // produces a piecewise-constant time axis → time-based lerp stalls between
+  // bomb anchors. Fix: linearly interpolate between adjacent bombStates so
+  // every sample gets a unique time. The result is strictly monotonic in s.
+  const sampleCountByGuid = new Uint32Array(numActors);
+  const clockBySample = new Float64Array(N);
+  {
+    let bsi = 0;
+    for (let s = 0; s < N; s++) {
+      while (bsi < bombStates.length && bombStates[bsi].sampleIdx <= s) bsi++;
+      // bsi now points to the FIRST bombState with sampleIdx > s (or .length).
+      const prev = bsi > 0 ? bombStates[bsi - 1] : null;
+      const next = bsi < bombStates.length ? bombStates[bsi] : null;
+      if (prev && next) {
+        const span = next.sampleIdx - prev.sampleIdx;
+        const alpha = span > 0 ? (s - prev.sampleIdx) / span : 0;
+        clockBySample[s] = prev.t + (next.t - prev.t) * alpha;
+      } else if (prev) {
+        clockBySample[s] = prev.t;
+      } else if (next) {
+        clockBySample[s] = next.t;
+      } else {
+        clockBySample[s] = 0;
+      }
+      const ai = guidIdx.get(samples[s][1]);
+      if (ai !== undefined) sampleCountByGuid[ai]++;
+    }
+  }
+
+  // Pass 2: allocate + fill per-actor TypedArrays (stream idx, x, y)
+  const actorStream = new Array(numActors);
+  const actorX = new Array(numActors);
+  const actorY = new Array(numActors);
+  for (let ai = 0; ai < numActors; ai++) {
+    const n = sampleCountByGuid[ai];
+    actorStream[ai] = new Uint32Array(n);
+    actorX[ai] = new Float32Array(n);
+    actorY[ai] = new Float32Array(n);
+  }
+  const writeHead = new Uint32Array(numActors);
+  for (let s = 0; s < N; s++) {
+    const samp = samples[s];
+    const ai = guidIdx.get(samp[1]); if (ai === undefined) continue;
+    const w = writeHead[ai]++;
+    actorStream[ai][w] = s;
+    actorX[ai][w] = samp[2];
+    actorY[ai][w] = samp[3];
+  }
+
+  // Coarse bomb-clock-per-frame buffer (kept ONLY for round detection below).
+  const FRAMES_TARGET = 6000;
+  const PER_FRAME = Math.max(1, Math.floor(N / FRAMES_TARGET));
+  const frameCount = Math.ceil(N / PER_FRAME);
+  const clockBuf = new Float32Array(frameCount);
+  const firstFrameByGuid = new Int32Array(numActors).fill(-1);
+  {
+    let bsi = 0, last = 0; let s = 0;
+    for (let f = 0; f < frameCount; f++) {
+      const end = Math.min(N, s + PER_FRAME);
+      while (bsi < bombStates.length && bombStates[bsi].sampleIdx <= end) {
+        last = bombStates[bsi].t; bsi++;
+      }
+      clockBuf[f] = last;
+      for (; s < end; s++) {
+        const ai = guidIdx.get(samples[s][1]);
+        if (ai !== undefined && firstFrameByGuid[ai] === -1) firstFrameByGuid[ai] = f;
+      }
+    }
+  }
+  // Used by team spawn clustering only — needs initial-position lookup.
+  function spawnPosOf(ai) {
+    return { wx: actorX[ai][0] || 0, wy: actorY[ai][0] || 0 };
+  }
+  step(55, 'identifying players…');
+  await new Promise(r => requestAnimationFrame(r));
+
+  // === Player identification ===================================================
+  // Top-10 GUIDs by sample count are the actual player pawns. The rest are
+  // utility actors (Cypher trips, Sova drones, smokes, raze grenades, etc.).
+  const sortedByCount = Array.from({length: numActors}, (_, i) => i)
+    .sort((a, b) => sampleCountByGuid[b] - sampleCountByGuid[a]);
+  const playerActorIdxs = sortedByCount.slice(0, 10);
+  const isPlayerActor = new Uint8Array(numActors);
+  playerActorIdxs.forEach(i => isPlayerActor[i] = 1);
+
+  // Cluster players into 2 teams by initial X position.
+  const playersWithSpawn = playerActorIdxs.map(ai => ({ ai, ...spawnPosOf(ai) }));
+  playersWithSpawn.sort((p1, p2) => p1.wy - p2.wy);
+  const teamA = playersWithSpawn.slice(0, 5).map(p => p.ai);
+  const teamB = playersWithSpawn.slice(5, 10).map(p => p.ai);
+  const teamOfActor = new Int8Array(numActors).fill(-1);
+  teamA.forEach(i => teamOfActor[i] = 0);
+  teamB.forEach(i => teamOfActor[i] = 1);
+
+  const bpsByCh = data.players;
+  const teamABps = Object.entries(bpsByCh).filter(([, v]) => v.team === 0).map(([k, v]) => ({ ch: +k, ...v }));
+  const teamBBps = Object.entries(bpsByCh).filter(([, v]) => v.team === 1).map(([k, v]) => ({ ch: +k, ...v }));
+
+  // === Round detection from roundStarted events ===============================
+  // BombGameState's clock is MATCH-monotonic (never resets), so the old
+  // discontinuity detector merged all 14 rounds into one. The events file
+  // gives us 14 authoritative roundStarted timestamps in ms-from-match-start.
+  // Convert each to a stream index via clockBySample bisect.
+  let roundStartEvents = events.filter(e => e.g === 'roundStarted').sort((a, b) => a.t - b.t);
+  // Fallback: if events.json didn't carry roundStarted (extractor failed to
+  // derive, or running on a clean .vrf with no event extraction), synthesize
+  // rounds from BombGameState clock discontinuities. Each round resets the
+  // BombClock to ~0, so a backwards jump > 5s marks a new round boundary.
+  if (roundStartEvents.length === 0 && bombStates.length > 1) {
+    const synthetic = [];
+    let lastT = -Infinity;
+    let sumOffset = 0;
+    for (let i = 0; i < bombStates.length; i++) {
+      const bs = bombStates[i];
+      if (bs.t < lastT - 5) sumOffset += lastT;       // new round: drop clock baseline
+      const wallMs = (sumOffset + bs.t) * 1000;
+      if (i === 0 || (bs.t < lastT - 5)) synthetic.push({ g: 'roundStarted', t: wallMs });
+      lastT = bs.t;
+    }
+    roundStartEvents = synthetic;
+    console.log('[viewer] synthesized', synthetic.length, 'rounds from BombGameState');
+  }
+  // bombClock <-> matchWallClock offset: pin event 0 to its corresponding
+  // sample's bomb clock.
+  const firstEventSample = (() => {
+    // first event = roundStarted at ~0ms; assume the earliest bombStates entry
+    // (capture-start) corresponds roughly to "match start".
+    return 0;
+  })();
+  const matchWallOffsetSec = (clockBySample[firstEventSample] || 0) - (roundStartEvents[0]?.t || 0) / 1000;
+
+  function sampleForWallMs(ms) {
+    const targetBombSec = ms / 1000 + matchWallOffsetSec;
+    let lo = 0, hi = N - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (clockBySample[mid] < targetBombSec) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+
+  const rounds = roundStartEvents.map((ev, i) => {
+    const startSample = sampleForWallMs(ev.t);
+    const next = roundStartEvents[i + 1];
+    const endSample = next ? Math.max(startSample, sampleForWallMs(next.t) - 1) : N - 1;
+    const startBombSec = clockBySample[startSample] || 0;
+    const endBombSec = clockBySample[endSample] || startBombSec;
+    return {
+      label: `R${i + 1}`,
+      startSample, endSample,
+      startBombSec, endBombSec,
+      durationSec: Math.max(1, endBombSec - startBombSec),
+      wallStartMs: ev.t,
+      wallEndMs: next ? next.t : ev.t + 100_000,
+    };
+  });
+  console.log('[viewer] detected rounds:', rounds.map(r =>
+    `${r.label}: samples ${r.startSample}-${r.endSample} (${r.durationSec.toFixed(1)}s)`));
+
+  // === Event bucketing — assign each event to a round + a sample index ========
+  const evList = events.map(e => {
+    const sIdx = sampleForWallMs(e.t);
+    let rIdx = 0;
+    for (let i = 0; i < rounds.length; i++) {
+      if (sIdx >= rounds[i].startSample && sIdx <= rounds[i].endSample) { rIdx = i; break; }
+      if (i === rounds.length - 1) rIdx = i;
+    }
+    const r = rounds[rIdx];
+    const secInRound = (clockBySample[sIdx] || 0) - r.startBombSec;
+    return { e, sampleIdx: sIdx, roundIdx: rIdx, secInRound };
+  }).sort((a, b) => a.sampleIdx - b.sampleIdx);
+
+  step(85, 'painting UI…');
+  await new Promise(r => requestAnimationFrame(r));
+
+  // === Sidebar — match-details if present, else anonymous BombPlayerState ====
+  const mdPlayers = (mDetails && mDetails.players) || [];
+  const ANONYMOUS_MODE = mdPlayers.length === 0;
+  function agentMeta(cid) { return agents[(cid || '').toLowerCase()] || { name: '?', icon: null, role: '' }; }
+  function paintTeam(elId, list) {
+    const el = document.getElementById(elId);
+    el.innerHTML = list.map(p => {
+      const a = agentMeta(p.characterId);
+      const k = p.stats?.kills ?? 0, d = p.stats?.deaths ?? 0, ast = p.stats?.assists ?? 0;
+      const score = p.stats?.score ?? 0;
+      const name = (p.gameName && p.gameName.length) ? `${p.gameName}#${p.tagLine}` : 'Anonymous';
+      return `<div class="prow" title="${name} · ${a.role}">
+        <img class="agent-ico" src="${a.icon || ''}" alt="${a.name}" onerror="this.style.visibility='hidden'">
+        <div class="p-meta">
+          <div class="p-name">${a.name}</div>
+          <div class="p-kda">${k}/${d}/${ast} · ${score}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  // Anonymous-mode painter — keyed off BombPlayerState entries from positions.json.
+  // No agent (the .vrf doesn't carry CharacterID per channel). Shows rank tier
+  // badge + ProfileName (often 'Imported Crosshair …' in Comp, real names in
+  // Customs).
+  function paintAnonTeam(elId, bpsList) {
+    const el = document.getElementById(elId);
+    el.innerHTML = bpsList.map(p => {
+      const tier = rankByTier[p.CompetitiveTier] || { name: 'Unranked', icon: null, color: '#888' };
+      const ping = p.Ping ?? 0;
+      const name = (p.ProfileName && p.ProfileName.length) ? p.ProfileName : `Player ${p.PlayerId || ''}`;
+      const safeName = name.replace(/</g, '&lt;');
+      return `<div class="prow" title="${safeName} · ${tier.name} · ${ping}ms">
+        <img class="agent-ico" src="${tier.icon || ''}" alt="${tier.name}" style="background:transparent" onerror="this.style.visibility='hidden'">
+        <div class="p-meta">
+          <div class="p-name" style="font-size:11px">${safeName}</div>
+          <div class="p-kda" style="color:${tier.color}">${tier.name} · ${ping}ms</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  function colorForPlayer(ai) {
+    // Players: team color w/ per-actor luminance variation so each of the 5 has a distinct shade
+    const team = teamOfActor[ai];
+    const tIdx = (team === 0 ? teamA : teamB).indexOf(ai);
+    const base = team === 0 ? [90, 200, 250] : [255, 82, 82];
+    const lift = tIdx * 12; // 0,12,24,36,48 lightness shift
+    return `rgb(${Math.min(255, base[0] + lift)}, ${Math.min(255, base[1] + lift)}, ${Math.min(255, base[2] + lift)})`;
+  }
+  const srcEl = document.getElementById('src');
+  if (ANONYMOUS_MODE) {
+    paintAnonTeam('team-a', teamABps);
+    paintAnonTeam('team-b', teamBBps);
+    srcEl.innerHTML = `<span style="opacity:0.7">.vrf only · anonymous mode</span>`;
+  } else {
+    const blueTeam = mdPlayers.filter(p => p.teamId === 'Blue');
+    const redTeam = mdPlayers.filter(p => p.teamId === 'Red');
+    paintTeam('team-a', blueTeam);
+    paintTeam('team-b', redTeam);
+    const matchInfo = mDetails?.matchInfo || {};
+    const blueScore = mDetails?.teams?.find(t => t.teamId === 'Blue')?.roundsWon ?? 0;
+    const redScore  = mDetails?.teams?.find(t => t.teamId === 'Red')?.roundsWon ?? 0;
+    srcEl.innerHTML = `<span style="color:var(--team-a);font-weight:700">${blueScore}</span>` +
+      ` <span style="opacity:0.5">—</span> ` +
+      `<span style="color:var(--team-b);font-weight:700">${redScore}</span>` +
+      ` · ${matchInfo.queueID || 'unknown'} · ${Math.round((matchInfo.gameLengthMillis || 0)/60000)} min`;
+  }
+
+  const b = data.meta.bounds;
+  document.getElementById('bounds').textContent = `X[${b.minX|0},${b.maxX|0}] Y[${b.minY|0},${b.maxY|0}]`;
+
+  const roundsEl = document.getElementById('rounds');
+  roundsEl.innerHTML = rounds.map((r, i) => `<button data-r="${i}">${r.label}</button>`).join('');
+  document.getElementById('rd-head').textContent = `Rounds (${rounds.length} detected)`;
+
+  // === Real kill events from match-details (defined BEFORE feed builder) ====
+  // CRITICAL: match-details kill.gameTime is the ABSOLUTE bomb-clock time × 1000
+  // (same scale as our clockBySample). kill.roundTime is from COMBAT-PHASE start
+  // (after the 30–45s buy phase), NOT from the .vrf's roundStarted event which
+  // fires at buy-phase start. So we derive each round's combat-start as
+  // (kill.gameTime - kill.roundTime) and use it as the authoritative round
+  // anchor. This brings the feed, the kill markers, and the player movement
+  // onto the SAME timeline.
+  const realKills = (mDetails?.kills || []).map(k => ({
+    round: k.round,
+    bombSec: k.gameTime / 1000,             // absolute bomb-clock, no offset math
+    roundTimeSec: k.roundTime / 1000,       // seconds from combat start (for UI)
+    victim: k.victim,
+    killer: k.killer,
+    vx: k.victimLocation?.x ?? 0,
+    vy: k.victimLocation?.y ?? 0,
+    playerLocations: k.playerLocations || [],
+    weapon: k.finishingDamage?.damageItem,
+  }));
+  // realRounds MUST be defined before the round-re-derive block (it reads
+  // rr.plantRoundTime / rr.defuseRoundTime).
+  const realRounds = (mDetails?.roundResults || []).map((rr, i) => ({
+    roundNum: rr.roundNum,
+    winningTeam: rr.winningTeam,
+    plantLocation: rr.plantLocation,
+    plantRoundTime: rr.plantRoundTime,
+    defuseLocation: rr.defuseLocation,
+    defuseRoundTime: rr.defuseRoundTime,
+    ceremony: rr.roundCeremony,
+  }));
+  // Override rounds[].startBombSec/durationSec using combat-phase anchors derived
+  // from match-details. Falls back to original roundStarted-based values if a
+  // round has no kills.
+  {
+    const combatStartByRound = {};
+    for (const kk of realKills) {
+      const cs = kk.bombSec - kk.roundTimeSec; // bomb-clock at combat start
+      if (combatStartByRound[kk.round] === undefined || cs < combatStartByRound[kk.round]) {
+        combatStartByRound[kk.round] = cs;
+      }
+    }
+    for (let i = 0; i < rounds.length; i++) {
+      const cs = combatStartByRound[i];
+      if (cs === undefined) continue;
+      rounds[i].startBombSec = cs;
+      // bisect clockBySample for combat-start to update startSample
+      let lo = 0, hi = N - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (clockBySample[mid] < cs) lo = mid + 1; else hi = mid;
+      }
+      rounds[i].startSample = lo;
+    }
+    // Per-round COMBAT-ONLY duration:
+    //   defused → combat ends at defuse + 0.5s
+    //   planted, no defuse → spike detonates ~45s after plant
+    //   no plant → combat ends at 100s OR last kill + 3s (whichever earlier)
+    // This stops the scrub bar from bleeding into the next round's buy phase.
+    const lastKillByRound = {};
+    for (const kk of realKills) {
+      const r = kk.round;
+      if (lastKillByRound[r] === undefined || kk.roundTimeSec > lastKillByRound[r]) {
+        lastKillByRound[r] = kk.roundTimeSec;
+      }
+    }
+    for (let i = 0; i < rounds.length; i++) {
+      const rr = realRounds[i];
+      let combatLenSec = 100; // default cap
+      if (rr) {
+        const plantSec = rr.plantRoundTime && rr.plantRoundTime > 0 ? rr.plantRoundTime / 1000 : null;
+        const defuseSec = rr.defuseRoundTime && rr.defuseRoundTime > 0 ? rr.defuseRoundTime / 1000 : null;
+        if (defuseSec !== null) {
+          combatLenSec = defuseSec + 1;
+        } else if (plantSec !== null) {
+          combatLenSec = plantSec + 45;
+        } else {
+          const lk = lastKillByRound[i];
+          if (lk !== undefined) combatLenSec = Math.min(100, lk + 3);
+          else combatLenSec = 100;
+        }
+      }
+      rounds[i].durationSec = Math.max(1, combatLenSec);
+      const endBombSec = rounds[i].startBombSec + rounds[i].durationSec;
+      // bisect for endSample
+      let lo = rounds[i].startSample, hi = N - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (clockBySample[mid] < endBombSec) lo = mid + 1; else hi = mid;
+      }
+      rounds[i].endSample = lo;
+      rounds[i].endBombSec = endBombSec;
+    }
+  }
+
+  // Hoist constants used by hoisted actor functions (otherwise they're in TDZ
+  // when the bridge code below calls getActorPos for the first time).
+  // STALE_GAP: time after the player's last sample before we treat them as
+  //            dead (gap between the "alive" lerp and the dead-body ✕).
+  const STALE_GAP_SEC = 0.6;
+
+  // === BRIDGE: puuid → canvas actor index, by spatial voting at kill moments ==
+  // For every kill, match-details lists where each of the 10 players was. We
+  // look up our canvas actor positions at that same bomb-clock, and for each
+  // puuid we vote for the canvas actor closest to it. Whichever actor gets the
+  // most votes per puuid is the binding. This is the bridge between the
+  // anonymous .vrf actor stream and the named match-details player roster.
+  function streamIdxForBombSec(targetBombSec) {
+    let lo = 0, hi = N - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (clockBySample[mid] < targetBombSec) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+  const voteByPuuid = {}; // puuid -> {actorIdx: voteCount, ...}
+  for (const kk of realKills) {
+    const sIdx = streamIdxForBombSec(kk.bombSec);
+    // snapshot all 10 player actor positions at this moment
+    const snap = playerActorIdxs.map(ai => {
+      const p = getActorPos(ai, sIdx);
+      return p && !p.stale ? { ai, x: p.wx, y: p.wy } : null;
+    }).filter(Boolean);
+    if (snap.length === 0) continue;
+    for (const pl of kk.playerLocations) {
+      const sub = pl.subject;
+      if (!sub) continue;
+      let best = null, bestD = Infinity;
+      for (const s of snap) {
+        const dx = s.x - pl.location.x, dy = s.y - pl.location.y;
+        const d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = s.ai; }
+      }
+      if (best !== null) {
+        if (!voteByPuuid[sub]) voteByPuuid[sub] = {};
+        voteByPuuid[sub][best] = (voteByPuuid[sub][best] || 0) + 1;
+      }
+    }
+  }
+  // Resolve final mapping: each actor goes to its highest-voting puuid uniquely.
+  // Greedy: sort all (puuid, actor) candidates by vote desc, take in order.
+  const puuidToActor = {};
+  const actorToPuuid = {};
+  {
+    const candidates = [];
+    for (const [puuid, votes] of Object.entries(voteByPuuid)) {
+      for (const [ai, v] of Object.entries(votes)) {
+        candidates.push({ puuid, ai: +ai, v });
+      }
+    }
+    candidates.sort((a, b) => b.v - a.v);
+    for (const c of candidates) {
+      if (puuidToActor[c.puuid] !== undefined) continue;
+      if (actorToPuuid[c.ai] !== undefined) continue;
+      puuidToActor[c.puuid] = c.ai;
+      actorToPuuid[c.ai] = c.puuid;
+    }
+  }
+  console.log('[viewer] bridged', Object.keys(puuidToActor).length, '/', mdPlayers.length, 'players to canvas actors');
+
+  // Recolor: now that we know which puuid each actor is, derive team from
+  // match-details (authoritative).
+  for (const p of mdPlayers) {
+    const ai = puuidToActor[p.subject]; if (ai === undefined) continue;
+    teamOfActor[ai] = p.teamId === 'Blue' ? 0 : 1;
+  }
+  // Helper: actor → match-details player + agent
+  function actorPlayer(ai) {
+    const puuid = actorToPuuid[ai]; if (!puuid) return null;
+    return mdPlayers.find(p => p.subject === puuid) || null;
+  }
+  function actorAgent(ai) {
+    const p = actorPlayer(ai);
+    return p ? agentMeta(p.characterId) : null;
+  }
+
+  // === Per-actor real-aim snapshots from match-details kills =================
+  // Every kill has playerLocations with viewRadians for ALL 10 players. That
+  // gives us thousands of TRUE aim samples scattered across the match. We
+  // bucket them per actor and bisect by bombSec at render time, so facing
+  // around kill moments matches what each player was actually looking at.
+  const aimByActor = new Array(numActors);
+  for (let a = 0; a < numActors; a++) aimByActor[a] = []; // each: [{tSec, yaw}, ...]
+  for (const kk of realKills) {
+    for (const pl of kk.playerLocations) {
+      const ai = puuidToActor[pl.subject]; if (ai === undefined) continue;
+      if (pl.viewRadians === undefined) continue;
+      aimByActor[ai].push({ tSec: kk.bombSec, yaw: pl.viewRadians });
+    }
+  }
+  for (let a = 0; a < numActors; a++) {
+    aimByActor[a].sort((x, y) => x.tSec - y.tSec);
+  }
+  // Lookup: LERP between the two adjacent aim samples (with shortest-arc
+  // wrap-around) so the direction rotates continuously rather than snapping.
+  const AIM_WINDOW_SEC = 6;
+  function lerpYaw(a, b, t) {
+    let d = b - a;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return a + d * t;
+  }
+  function realAimAt(ai, tSec) {
+    const arr = aimByActor[ai];
+    if (!arr || arr.length === 0) return null;
+    let lo = 0, hi = arr.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid].tSec < tSec) lo = mid + 1; else hi = mid;
+    }
+    const hiI = lo, loI = lo - 1;
+    const before = loI >= 0 ? arr[loI] : null;
+    const after  = hiI < arr.length ? arr[hiI] : null;
+    if (!before && !after) return null;
+    if (!before) {
+      if (after.tSec - tSec > AIM_WINDOW_SEC) return null;
+      return after.yaw;
+    }
+    if (!after) {
+      if (tSec - before.tSec > AIM_WINDOW_SEC) return null;
+      return before.yaw;
+    }
+    const span = after.tSec - before.tSec;
+    // If both samples are too far away, no real aim available
+    if (tSec - before.tSec > AIM_WINDOW_SEC && after.tSec - tSec > AIM_WINDOW_SEC) return null;
+    if (span <= 1e-6) return before.yaw;
+    const t = Math.max(0, Math.min(1, (tSec - before.tSec) / span));
+    return lerpYaw(before.yaw, after.yaw, t);
+  }
+
+  // Per-actor smoothed heading state so frame-to-frame transitions are eased
+  // even between large angular jumps (e.g. crossing rounds).
+  const smoothedYaw = new Float32Array(numActors);
+  const smoothedYawSet = new Uint8Array(numActors);
+  function smoothYaw(ai, target) {
+    if (target === null) return null;
+    if (!smoothedYawSet[ai]) {
+      smoothedYaw[ai] = target; smoothedYawSet[ai] = 1; return target;
+    }
+    const cur = smoothedYaw[ai];
+    let d = target - cur;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    // Adaptive ease: snap fast on big changes, glide on tiny ones
+    const absD = Math.abs(d);
+    const ease = absD > 1.5 ? 0.45 : 0.18;
+    const next = cur + d * ease;
+    smoothedYaw[ai] = next;
+    return next;
+  }
+
+  // === Classify utility actors by movement pattern + lifetime ================
+  // Five visual classes, derived purely from per-actor sample stats. Without
+  // parser-level access to actor class names we can't say "this is Killjoy's
+  // turret", but the lifetime+motion pattern tells us how to render it:
+  //   CAM     stationary, long-lived (>10s) — Cypher cam, Killjoy turret/Lockdown
+  //   SMOKE   stationary, 4-10s lifetime    — smokes, walls, Sage slow/wall segs
+  //   QUICK   stationary, <4s lifetime      — mollies, slows, KO knife, flashes
+  //   DRONE   moving, long-range (>1500u)   — Sova/KAY/O drones, recon arrows
+  //   PROJ    moving, short-range (<1500u)  — grenades, arcing projectiles
+  const UTIL_CAM = 1, UTIL_SMOKE = 2, UTIL_QUICK = 3, UTIL_DRONE = 4, UTIL_PROJ = 5;
+  const utilityClass = new Uint8Array(numActors);
+  const utilityLifeSec = new Float32Array(numActors);
+  for (let a = 0; a < numActors; a++) {
+    if (isPlayerActor[a]) continue;
+    const arr = actorStream[a];
+    const xs = actorX[a], ys = actorY[a];
+    if (arr.length === 0) continue;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (let i = 0; i < xs.length; i++) {
+      if (xs[i] < minX) minX = xs[i]; if (xs[i] > maxX) maxX = xs[i];
+      if (ys[i] < minY) minY = ys[i]; if (ys[i] > maxY) maxY = ys[i];
+    }
+    const span = Math.max(maxX - minX, maxY - minY);
+    const tStart = clockBySample[arr[0]] || 0;
+    const tEnd = clockBySample[arr[arr.length - 1]] || tStart;
+    utilityLifeSec[a] = tEnd - tStart;
+    if (span < 50) {
+      // stationary. Real Valorant lifetimes:
+      //   Cypher cam, KJ turret/Lockdown ult: 30s+ (lasts whole round)
+      //   smokes (Brim/Omen/Astra/Clove/Harbor walls): 12-25s
+      //   mollys/slows/quick-util: 4-12s
+      //   flashes/quick-pop: <4s
+      if (utilityLifeSec[a] > 30) utilityClass[a] = UTIL_CAM;
+      else if (utilityLifeSec[a] > 12) utilityClass[a] = UTIL_SMOKE;
+      else if (utilityLifeSec[a] > 4) utilityClass[a] = UTIL_QUICK;
+      else utilityClass[a] = UTIL_QUICK;
+    } else {
+      utilityClass[a] = span > 1500 ? UTIL_DRONE : UTIL_PROJ;
+    }
+  }
+
+  // Shared re-render scheduler — used by agent icons + ability icons as they load.
+  let pendingRender = false;
+  function scheduleRender() {
+    if (pendingRender) return;
+    pendingRender = true;
+    requestAnimationFrame(() => { pendingRender = false; if (typeof render === 'function') render(); });
+  }
+
+  // Preload ability icons from valorant-api (deduped by URL).
+  const abilityIconCache = {};
+  for (const ab of abilities) {
+    if (ab.icon && !abilityIconCache[ab.icon]) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = scheduleRender;
+      img.src = ab.icon;
+      abilityIconCache[ab.icon] = img;
+    }
+  }
+
+  // Preload agent icons. Re-render the canvas the moment each one finishes
+  // downloading — otherwise the first draw lands before any image is ready
+  // and you see black fallback dots until something triggers another render.
+  const agentIconImgs = {};
+  for (const p of mdPlayers) {
+    const a = agentMeta(p.characterId);
+    if (a.icon && !agentIconImgs[p.characterId]) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = scheduleRender;
+      img.src = a.icon;
+      agentIconImgs[p.characterId] = img;
+    }
+  }
+
+  // Event feed
+  const feedEl = document.getElementById('feed');
+  // Merge real kills + spike events into a single feed, sorted in-round.
+  const feedItems = [];
+  for (const k of realKills) {
+    const killerP = mdPlayers.find(p => p.subject === k.killer);
+    const victimP = mdPlayers.find(p => p.subject === k.victim);
+    const ka = agentMeta(killerP?.characterId);
+    const va = agentMeta(victimP?.characterId);
+    feedItems.push({
+      kind: 'kill', round: k.round, secInRound: k.roundTimeSec,
+      label: `${ka.name} → ${va.name}`,
+      icon: '💀',
+      teamSide: killerP?.teamId === 'Blue' ? 'a' : 'b',
+    });
+  }
+  for (let i = 0; i < realRounds.length; i++) {
+    const rr = realRounds[i];
+    if (rr.plantRoundTime != null && rr.plantRoundTime > 0 && rr.plantLocation) {
+      feedItems.push({ kind: 'spike', round: i, secInRound: rr.plantRoundTime / 1000,
+        label: 'spike planted', icon: '<img src="spike.png" style="width:14px;height:14px;vertical-align:middle">', teamSide: '' });
+    }
+    if (rr.defuseRoundTime != null && rr.defuseLocation) {
+      feedItems.push({ kind: 'defuse', round: i, secInRound: rr.defuseRoundTime / 1000,
+        label: 'spike defused', icon: '✓', teamSide: '' });
+    }
+  }
+  // Ability deployments — skip cast-metadata + projectile-only entries that
+  // duplicate the canonical "this ability landed" event.
+  const FEED_TYPES = new Set([
+    'smoke','wall','molly','satchel-boom','reveal','leer','slow','drone','heal-pool','postdeath','flash-src',
+  ]);
+  for (const ab of abilities) {
+    if (!FEED_TYPES.has(ab.type)) continue;
+    if (ab.cls.startsWith('Ability_')) continue;   // pre-round init
+    if (ab.cls.startsWith('Patch_'))   continue;   // patch is the landed instance — but already covered by molly type below
+    // resolve round by bombSec
+    let rIdx = -1;
+    for (let i = 0; i < rounds.length; i++) {
+      if (ab.t >= rounds[i].startBombSec - 1 && ab.t <= rounds[i].endBombSec + 1) { rIdx = i; break; }
+    }
+    if (rIdx === -1) continue;
+    const ico = ab.icon
+      ? `<img src="${ab.icon}" style="width:13px;height:13px;vertical-align:middle;border-radius:2px">`
+      : '✦';
+    feedItems.push({
+      kind: 'ability',
+      round: rIdx,
+      secInRound: ab.t - rounds[rIdx].startBombSec,
+      label: `${ab.agent} ${ab.ability}`,
+      icon: ico,
+      teamSide: ab.team === 0 ? 'a' : ab.team === 1 ? 'b' : '',
+    });
+  }
+  feedItems.sort((a, b) => a.round - b.round || a.secInRound - b.secInRound);
+  // Per-round feed: rendered once on round change. Highlighting + auto-scroll
+  // updates every frame via highlightFeed() (cheap — toggles a 'cur' class).
+  let currentFeedItems = [];
+  function paintFeed() {
+    currentFeedItems = feedItems.filter(it => it.round === curRoundIdx);
+    if (currentFeedItems.length === 0) {
+      feedEl.innerHTML = `<div style="padding:8px 0;color:var(--muted);font-size:11px">no events this round</div>`;
+      return;
+    }
+    feedEl.innerHTML = currentFeedItems.map((it, idx) => {
+      const kind = it.kind === 'kill' ? 'kill' : (it.kind === 'ability' ? 'ult' : 'spike');
+      const accent = it.teamSide === 'a' ? 'border-left:2px solid var(--team-a);padding-left:6px;'
+        : it.teamSide === 'b' ? 'border-left:2px solid var(--team-b);padding-left:6px;' : '';
+      return `<div class="frow ${kind}" data-r="${it.round}" data-s="${it.secInRound.toFixed(3)}" data-idx="${idx}" style="${accent}">
+        <span class="t">${it.secInRound.toFixed(1)}s</span>
+        <span><span class="ic">${it.icon}</span> ${it.label}</span>
+        <span></span>
+      </div>`;
+    }).join('');
+    highlightFeed();
+  }
+  // Updated each frame: marks the closest event to virtualSec as 'cur' and
+  // scrolls the feed so it sits roughly in the middle of the visible area.
+  function highlightFeed() {
+    if (!currentFeedItems.length) return;
+    // binary search for the event whose secInRound is <= virtualSec (closest past)
+    let lo = 0, hi = currentFeedItems.length - 1, best = 0;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (currentFeedItems[mid].secInRound <= virtualSec) { best = mid; lo = mid + 1; }
+      else hi = mid - 1;
+    }
+    const rows = feedEl.querySelectorAll('.frow');
+    rows.forEach(r => r.classList.remove('cur'));
+    const cur = rows[best];
+    if (cur) {
+      cur.classList.add('cur');
+      // scroll so the highlighted row is vertically centered
+      const containerH = feedEl.clientHeight;
+      const desiredTop = cur.offsetTop - containerH / 2 + cur.offsetHeight / 2;
+      // ease toward the target so it doesn't snap on every frame
+      const dy = desiredTop - feedEl.scrollTop;
+      if (Math.abs(dy) > 1) feedEl.scrollTop += dy * 0.18;
+    }
+  }
+
+  // === Canvas with map background ============================================
+  const cvs = document.getElementById('mini');
+  const ctx = cvs.getContext('2d');
+  let dpr = window.devicePixelRatio || 1;
+  function fit() {
+    const r = cvs.parentElement.getBoundingClientRect();
+    cvs.width = r.width * dpr; cvs.height = r.height * dpr;
+    cvs.style.width = r.width + 'px'; cvs.style.height = r.height + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', () => { fit(); render(); });
+  fit();
+
+  // valorant-api projection: x_norm = world.y * xMult + xScalar
+  //                          y_norm = world.x * yMult + yScalar
+  function worldTo01(wx, wy) {
+    return {
+      nx: wy * mapInfo.xMultiplier + mapInfo.xScalarToAdd,
+      ny: wx * mapInfo.yMultiplier + mapInfo.yScalarToAdd,
+    };
+  }
+
+  // The map image is square in valorant-api. Fit into the canvas preserving aspect.
+  function mapFit() {
+    const w = cvs.width / dpr, h = cvs.height / dpr;
+    const pad = 16;
+    const side = Math.min(w - 2 * pad, h - 2 * pad);
+    return {
+      side,
+      ox: (w - side) / 2,
+      oy: (h - side) / 2,
+    };
+  }
+
+  function project(wx, wy) {
+    const { nx, ny } = worldTo01(wx, wy);
+    const m = MF;
+    return { x: m.ox + nx * m.side, y: m.oy + ny * m.side };
+  }
+
+  let MF = mapFit();
+  window.addEventListener('resize', () => { MF = mapFit(); });
+
+  // Per-actor sample-level interpolation, TIME-WEIGHTED.
+  // Locate the two raw samples bracketing virtualTimeSec, then LERP using
+  // the time gap between them — not the stream-index gap.
+  // If the time gap is large (>1.5s), the player is effectively DEAD or
+  // out-of-round; return loI position only, flagged as stale, so callers
+  // can hide the dot instead of drawing a phantom drift line to spawn.
+  function actorBracket(ai, streamIdxTarget) {
+    const arr = actorStream[ai];
+    if (arr.length === 0 || streamIdxTarget < arr[0]) return null;
+    const lastI = arr.length - 1;
+    if (streamIdxTarget >= arr[lastI]) {
+      // past the actor's last sample — treat as stale beyond STALE_GAP_SEC
+      const tNow = clockBySample[streamIdxTarget] || 0;
+      const tLast = clockBySample[arr[lastI]] || 0;
+      return { loI: lastI, hiI: lastI, alpha: 0, lastI, stale: (tNow - tLast) > STALE_GAP_SEC };
+    }
+    let lo = 0, hi = lastI;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] < streamIdxTarget) lo = mid + 1; else hi = mid;
+    }
+    const hiI = lo, loI = lo - 1;
+    if (loI < 0) return { loI: hiI, hiI, alpha: 0, lastI, stale: false };
+    const tTarget = clockBySample[streamIdxTarget] || 0;
+    const tLo = clockBySample[arr[loI]] || 0;
+    const tHi = clockBySample[arr[hiI]] || tLo;
+    const tSpan = tHi - tLo;
+    const alpha = tSpan > 1e-6 ? Math.max(0, Math.min(1, (tTarget - tLo) / tSpan)) : 0;
+    return { loI, hiI, alpha, lastI, stale: tSpan > STALE_GAP_SEC };
+  }
+  function getActorPos(ai, streamIdxTarget) {
+    const br = actorBracket(ai, streamIdxTarget); if (!br) return null;
+    const { loI, hiI, alpha, stale } = br;
+    if (stale) {
+      const tNow = clockBySample[streamIdxTarget] || 0;
+      const tLast = clockBySample[actorStream[ai][loI]] || 0;
+      return { wx: actorX[ai][loI], wy: actorY[ai][loI], stale: true, staleFor: tNow - tLast };
+    }
+    return {
+      wx: actorX[ai][loI] + (actorX[ai][hiI] - actorX[ai][loI]) * alpha,
+      wy: actorY[ai][loI] + (actorY[ai][hiI] - actorY[ai][loI]) * alpha,
+      stale: false,
+      staleFor: 0,
+    };
+  }
+
+  // Facing arrow with a low-pass filter on heading so it doesn't whip around
+  // every time velocity flips sign. State held across frames per actor.
+  const lastHeading = new Float32Array(numActors);
+  const hasHeading = new Uint8Array(numActors);
+  function getActorFacing(ai, streamIdxTarget) {
+    const br = actorBracket(ai, streamIdxTarget); if (!br) return null;
+    const { loI } = br;
+    if (loI < 1) return null;
+    const here = getActorPos(ai, streamIdxTarget); if (!here) return null;
+    // Walk back through up to ~0.5s of real time to find a sample with
+    // meaningful displacement.
+    const tNow = clockBySample[streamIdxTarget] || 0;
+    let heading = null;
+    for (let i = loI; i >= 0; i--) {
+      const tThen = clockBySample[actorStream[ai][i]] || 0;
+      if (tNow - tThen > 0.5) break;
+      const dx = here.wx - actorX[ai][i], dy = here.wy - actorY[ai][i];
+      if (Math.hypot(dx, dy) > 8) { heading = Math.atan2(dy, dx); break; }
+    }
+    if (heading === null) return hasHeading[ai] ? lastHeading[ai] : null;
+    // low-pass: blend toward new heading, but stay sticky if angular delta is small
+    if (hasHeading[ai]) {
+      let d = heading - lastHeading[ai];
+      while (d > Math.PI) d -= Math.PI * 2;
+      while (d < -Math.PI) d += Math.PI * 2;
+      heading = lastHeading[ai] + d * 0.35; // ease
+    }
+    lastHeading[ai] = heading;
+    hasHeading[ai] = 1;
+    return heading;
+  }
+
+  // Toggles, persisted across reloads. Bump version key to invalidate old saves.
+  const TOGGLE_VER = 'v2';
+  const loadToggle = (k, d) => { const v = localStorage.getItem('vrf.' + TOGGLE_VER + '.' + k); return v === null ? d : v === '1'; };
+  const saveToggle = (k, v) => localStorage.setItem('vrf.' + TOGGLE_VER + '.' + k, v ? '1' : '0');
+  let trailsOn = loadToggle('trails', true);
+  let arrowsOn = loadToggle('arrows', true);
+  let utilOn   = loadToggle('util', true);
+  console.log('[viewer] toggles:', { trails: trailsOn, arrows: arrowsOn, util: utilOn });
+  // Trail = positions over the last TRAIL_SEC seconds. Sample-based so it
+  // looks smooth regardless of playback speed.
+  const TRAIL_SEC = 2.5;
+
+  function render() {
+    const sTarget = curStreamIdx;
+    const tBomb = clockBySample[sTarget] || 0;
+    const w = cvs.width / dpr, h = cvs.height / dpr;
+    ctx.fillStyle = '#07090d'; ctx.fillRect(0, 0, w, h);
+
+    MF = mapFit();
+    ctx.globalAlpha = 0.7;
+    ctx.drawImage(mapImg, MF.ox, MF.oy, MF.side, MF.side);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(MF.ox + 0.5, MF.oy + 0.5, MF.side - 1, MF.side - 1);
+
+    // === Utility actors with per-class visuals ================================
+    // Smoke world-radius ≈ 425 units, molly burn ≈ 250 units. We project a
+    // worldRadius into screen radius by sampling a point at +radius and
+    // measuring the screen-space distance.
+    function worldRadiusToScreen(wx, wy, worldR) {
+      const a = project(wx, wy);
+      const b = project(wx, wy + worldR);
+      return Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    // Utility position lookup, TIME-based (not sample-index-based) because
+    // static utility updates very sparsely. Extends the active window past the
+    // last replicated sample by a class-appropriate duration matching the
+    // actual in-game lifetime (smokes 18s, mollies 6s, cams stay all round).
+    // Returns {wx, wy, deployed: bool} — deployed=false means actor exists in
+    // data but its first sample is in the future relative to current scrub.
+    function getUtilPos(ai, sTargetIdx) {
+      const arr = actorStream[ai];
+      if (arr.length === 0) return null;
+      const tNow = clockBySample[sTargetIdx] || 0;
+      const tFirst = clockBySample[arr[0]] || 0;
+      const tLast = clockBySample[arr[arr.length - 1]] || tFirst;
+      if (tNow < tFirst - 0.1) return null;                  // not spawned yet
+      const cls = utilityClass[ai];
+      const extendSec = cls === UTIL_CAM   ? 90
+                      : cls === UTIL_SMOKE ? 18
+                      : cls === UTIL_QUICK ?  6
+                      :                       3;
+      if (tNow > tLast + extendSec) return null;             // expired
+      let lo = 0, hi = arr.length - 1;
+      if (sTargetIdx >= arr[hi]) return { wx: actorX[ai][hi], wy: actorY[ai][hi] };
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (arr[mid] < sTargetIdx) lo = mid + 1; else hi = mid;
+      }
+      const idx = Math.max(0, lo - 1);
+      return { wx: actorX[ai][idx], wy: actorY[ai][idx] };
+    }
+    // === REAL abilities with valorant-api icons + team tinting ===============
+    // Team color: derived from ownerActor (nearest player at spawn) → team.
+    // Each ability gets a slight team-colored ring + tinted fill.
+    function teamRGB(team, a) {
+      // team 0 = Blue (A), team 1 = Red (B)
+      if (team === 0) return `rgba(90,200,250,${a})`;
+      if (team === 1) return `rgba(255,82,82,${a})`;
+      return `rgba(200,200,210,${a})`;
+    }
+    if (utilOn) {
+      let utilDrawn = 0;
+      for (const ab of abilities) {
+        const dt = tBomb - ab.t;
+        if (dt < 0 || dt > ab.life) continue;
+        utilDrawn++;
+        const sp = project(ab.x, ab.y);
+        const fade = 1 - dt / ab.life;
+        // Prefer authoritative agent→team from match-details; only fall back
+        // to spatial owner-actor lookup for mirror-pick agents (Sage/Skye).
+        let team = (ab.team === 0 || ab.team === 1) ? ab.team : -1;
+        if (team === -1 && ab.ownerActor !== undefined && ab.ownerActor !== -1) {
+          team = teamOfActor[ab.ownerActor];
+        }
+        const img = abilityIconCache[ab.icon];
+        ctx.save();
+        ctx.globalAlpha = Math.max(0.3, fade);
+
+        const ringR = ab.radius ? Math.max(8, worldRadiusToScreen(ab.x, ab.y, ab.radius)) : 0;
+        const outerR = ab.outerRadius ? Math.max(ringR + 4, worldRadiusToScreen(ab.x, ab.y, ab.outerRadius)) : 0;
+
+        // outer damage radius (Paint Shells, satchels) — dashed tinted ring
+        if (outerR > 0) {
+          ctx.strokeStyle = teamRGB(team, 0.4);
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, outerR, 0, Math.PI * 2); ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        if (ab.type === 'smoke') {
+          // smoke disc: neutral white-grey base with subtle team tint at the rim
+          const g = ctx.createRadialGradient(sp.x, sp.y, ringR * 0.3, sp.x, sp.y, ringR);
+          g.addColorStop(0, 'rgba(225,228,235,0.55)');
+          g.addColorStop(0.6, 'rgba(190,200,215,0.3)');
+          g.addColorStop(1, 'rgba(170,180,200,0)');
+          ctx.fillStyle = g;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ringR, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = teamRGB(team, 0.6);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ringR * 0.92, 0, Math.PI * 2); ctx.stroke();
+        } else if (ab.type === 'leer-aoe' || ab.type === 'recon-src' || ab.type === 'slow' || ab.type === 'reveal' || ab.type === 'heal-pool') {
+          ctx.strokeStyle = teamRGB(team, 0.7);
+          ctx.fillStyle = teamRGB(team, 0.12);
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([3, 3]);
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ringR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          ctx.setLineDash([]);
+        } else if (ab.type === 'molly' || ab.type === 'satchel-boom') {
+          ctx.fillStyle = teamRGB(team, 0.35);
+          ctx.strokeStyle = teamRGB(team, 0.9);
+          ctx.lineWidth = 1.5;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ringR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+        } else if (ab.type === 'wall' || ab.type === 'wall-seg') {
+          // Phoenix Blaze: extend a 1200u bar from the manager along the
+          // owner's facing direction (sampled from velocity around cast time —
+          // see build-abilities.mjs castDir derivation). Cast→manager is only
+          // ~23u so we can't use it as a direction reliably.
+          if (ab.agent === 'Phoenix' && ab.castDir) {
+            // Real Valorant Blaze geometry: ~1m gap in front of Phoenix, then
+            // 20m of wall. Wall is ~0.5m thick. (100u ≈ 1m in Valorant.)
+            const ux = ab.castDir.dx, uy = ab.castDir.dy;
+            const FRONT_GAP = 100, WALL_LEN = 2000, WALL_THICK = 50;
+            // Use cast point (Phoenix's hand) as anchor, offset forward by gap
+            const cast = ab.pairedFrom || { x: ab.x, y: ab.y };
+            const startX = cast.x + ux * FRONT_GAP, startY = cast.y + uy * FRONT_GAP;
+            const endX = startX + ux * WALL_LEN, endY = startY + uy * WALL_LEN;
+            const sp2 = project(startX, startY);
+            sp.x = sp2.x; sp.y = sp2.y;  // shift icon anchor to wall start
+            const ep = project(endX, endY);
+            const sx = sp.x, sy = sp.y;
+            const perpX = -(ep.y - sy), perpY = (ep.x - sx);
+            const perpMag = Math.hypot(perpX, perpY) || 1;
+            const thickPx = worldRadiusToScreen(ab.x, ab.y, WALL_THICK);
+            const ox = (perpX / perpMag) * thickPx;
+            const oy = (perpY / perpMag) * thickPx;
+            // filled wall bar (4 corners)
+            ctx.fillStyle = teamRGB(team, 0.45);
+            ctx.strokeStyle = teamRGB(team, 0.95);
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(sx + ox, sy + oy);
+            ctx.lineTo(ep.x + ox, ep.y + oy);
+            ctx.lineTo(ep.x - ox, ep.y - oy);
+            ctx.lineTo(sx - ox, sy - oy);
+            ctx.closePath();
+            ctx.fill(); ctx.stroke();
+            // adjust icon position to the wall midpoint
+            sp.x = (sx + ep.x) / 2; sp.y = (sy + ep.y) / 2;
+          } else {
+            ctx.fillStyle = teamRGB(team, 0.45);
+            ctx.strokeStyle = teamRGB(team, 0.95);
+            ctx.lineWidth = 1.2;
+            ctx.fillRect(sp.x - ringR * 0.5, sp.y - ringR * 0.5, ringR, ringR);
+            ctx.strokeRect(sp.x - ringR * 0.5, sp.y - ringR * 0.5, ringR, ringR);
+          }
+        }
+
+        // === Projectile arc: spawn → impact (straight or curved) ============
+        const isProj = ab.pairWith && ['grenade','satchel','flash-proj','flash-proj-left','flash-proj-right','molly','leer-proj','wall-cast'].includes(ab.type);
+        if (isProj) {
+          const dst = project(ab.pairWith.x, ab.pairWith.y);
+          // Skye flash: 0.75s windup before steering, then 1000 world units/sec.
+          // Use real physics-derived flight time for animation when we can.
+          let flightT = ab.pairWith.t - ab.t;
+          let windup = 0;
+          if (ab.agent === 'Skye' && (ab.type === 'flash-proj' || ab.type === 'flash-proj-left' || ab.type === 'flash-proj-right')) {
+            const distW = Math.hypot(ab.pairWith.x - ab.x, ab.pairWith.y - ab.y);
+            const physT = distW / 1000;        // 1000 units/sec base speed
+            windup = 0.75;                     // hawk charge-up before player can steer
+            flightT = Math.max(flightT, physT + windup);
+          }
+          // u in [0,1]: position along trajectory at current scrub time
+          let u = 0;
+          if (dt <= windup) u = 0;             // still winding up — bird at Skye's hand
+          else if (flightT > 0) u = Math.min(1, (dt - windup) / (flightT - windup));
+          else u = 1;
+          // perpendicular offset for curve (Phoenix Curveball L/R)
+          let curveSign = 0;
+          if (ab.type === 'flash-proj-left')  curveSign = -1;
+          if (ab.type === 'flash-proj-right') curveSign = +1;
+          const dx = dst.x - sp.x, dy = dst.y - sp.y;
+          const len = Math.hypot(dx, dy);
+          const perpX = -dy / (len || 1), perpY = dx / (len || 1);
+          // control point for quadratic Bezier (mid-line + perpendicular bulge)
+          const bulge = curveSign * 0.28 * len;
+          const cx = sp.x + dx * 0.5 + perpX * bulge;
+          const cy = sp.y + dy * 0.5 + perpY * bulge;
+          // dashed FULL path
+          ctx.strokeStyle = teamRGB(team, 0.45);
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath(); ctx.moveTo(sp.x, sp.y);
+          if (curveSign !== 0) ctx.quadraticCurveTo(cx, cy, dst.x, dst.y);
+          else                 ctx.lineTo(dst.x, dst.y);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // animated leading segment — split bezier at u via standard formula
+          let lx, ly;
+          if (curveSign !== 0) {
+            // point on quadratic bezier at parameter u
+            const omU = 1 - u;
+            lx = omU * omU * sp.x + 2 * omU * u * cx + u * u * dst.x;
+            ly = omU * omU * sp.y + 2 * omU * u * cy + u * u * dst.y;
+            // sample several points along [0,u] for the head segment
+            ctx.strokeStyle = teamRGB(team, 0.95);
+            ctx.lineWidth = 2.2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(sp.x, sp.y);
+            const N = Math.max(8, Math.floor(20 * u));
+            for (let s = 1; s <= N; s++) {
+              const su = (s / N) * u;
+              const om = 1 - su;
+              const x = om*om*sp.x + 2*om*su*cx + su*su*dst.x;
+              const y = om*om*sp.y + 2*om*su*cy + su*su*dst.y;
+              ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+          } else {
+            lx = sp.x + dx * u; ly = sp.y + dy * u;
+            ctx.strokeStyle = teamRGB(team, 0.95);
+            ctx.lineWidth = 2.2;
+            ctx.lineCap = 'round';
+            ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(lx, ly); ctx.stroke();
+          }
+          // leading dot
+          ctx.fillStyle = teamRGB(team, 1);
+          ctx.beginPath(); ctx.arc(lx, ly, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // (legacy: flash-proj also drew a separate trail — already covered above)
+        if (false && ab.type === 'flash-proj' && ab.pairWith) {
+          const dst = project(ab.pairWith.x, ab.pairWith.y);
+          // Bezier-ish straight trail with team color
+          ctx.strokeStyle = teamRGB(team, 0.7);
+          ctx.lineWidth = 2;
+          ctx.setLineDash([3, 4]);
+          ctx.beginPath(); ctx.moveTo(sp.x, sp.y); ctx.lineTo(dst.x, dst.y); ctx.stroke();
+          ctx.setLineDash([]);
+          // tip arrow at detonation
+          const ang = Math.atan2(dst.y - sp.y, dst.x - sp.x);
+          ctx.fillStyle = teamRGB(team, 0.95);
+          ctx.beginPath();
+          ctx.moveTo(dst.x, dst.y);
+          ctx.lineTo(dst.x - 7 * Math.cos(ang - 0.4), dst.y - 7 * Math.sin(ang - 0.4));
+          ctx.lineTo(dst.x - 7 * Math.cos(ang + 0.4), dst.y - 7 * Math.sin(ang + 0.4));
+          ctx.closePath(); ctx.fill();
+        } else if (ab.type === 'flash-src') {
+          // flash detonation radius — bright white pop
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ringR, 0, Math.PI * 2); ctx.fill();
+        }
+
+        // Foreground: real ability icon centered on the deployment.
+        const ICON_PX = ab.type === 'smoke' ? 22 : (ab.type === 'wall-seg' ? 12 : 18);
+        if (img && img.complete && img.naturalWidth > 0) {
+          // team-tinted backing circle for icon contrast
+          ctx.fillStyle = team >= 0 ? teamRGB(team, 0.85) : 'rgba(10,12,18,0.75)';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, ICON_PX * 0.6, 0, Math.PI * 2); ctx.fill();
+          ctx.drawImage(img, sp.x - ICON_PX / 2, sp.y - ICON_PX / 2, ICON_PX, ICON_PX);
+        } else {
+          ctx.fillStyle = teamRGB(team, 0.85);
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+      // OLD heuristic util renderer DELETED — it was painting player ability
+      // loadouts (Smoke_Production, ScoutAbilities, etc.) as fake diamonds at
+      // player spawn locations. All real on-map utility now comes from the
+      // ability layer above.
+      let utilCandidates = abilities.length;
+      if (false) {
+        for (let a = 0; a < numActors; a++) {
+        if (isPlayerActor[a]) continue;
+        utilCandidates++;
+        const cls = utilityClass[a];
+        const p = getUtilPos(a, sTarget); if (!p) continue;
+        utilDrawn++;
+        const sp = project(p.wx, p.wy);
+        ctx.save();
+        if (cls === UTIL_CAM) {
+          // small white-blue diamond, persistent recon
+          ctx.strokeStyle = 'rgba(180,210,255,0.7)';
+          ctx.fillStyle = 'rgba(180,210,255,0.18)';
+          ctx.lineWidth = 1.3;
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y - 4); ctx.lineTo(sp.x + 4, sp.y);
+          ctx.lineTo(sp.x, sp.y + 4); ctx.lineTo(sp.x - 4, sp.y);
+          ctx.closePath();
+          ctx.fill(); ctx.stroke();
+        } else if (cls === UTIL_SMOKE) {
+          // big translucent disc — visually occludes the area like a real smoke
+          const r = Math.max(8, worldRadiusToScreen(p.wx, p.wy, 425));
+          const gradient = ctx.createRadialGradient(sp.x, sp.y, r * 0.35, sp.x, sp.y, r);
+          gradient.addColorStop(0, 'rgba(220,225,235,0.55)');
+          gradient.addColorStop(0.7, 'rgba(180,190,210,0.35)');
+          gradient.addColorStop(1, 'rgba(160,170,190,0)');
+          ctx.fillStyle = gradient;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.fill();
+          // tight rim
+          ctx.strokeStyle = 'rgba(220,225,235,0.45)';
+          ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, r * 0.85, 0, Math.PI * 2); ctx.stroke();
+        } else if (cls === UTIL_QUICK) {
+          // molly / quick-util: orange-red filled circle pulsing
+          const r = Math.max(6, worldRadiusToScreen(p.wx, p.wy, 250));
+          ctx.fillStyle = 'rgba(255,100,60,0.45)';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.fill();
+          ctx.strokeStyle = 'rgba(255,140,80,0.85)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, r, 0, Math.PI * 2); ctx.stroke();
+          ctx.fillStyle = 'rgba(255,180,120,0.95)';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2); ctx.fill();
+        } else if (cls === UTIL_DRONE) {
+          // drone: short trail (last 8 of its own samples) + filled orange dot
+          const arr = actorStream[a];
+          let lo = 0, hi = arr.length - 1;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (arr[mid] < sTarget) lo = mid + 1; else hi = mid;
+          }
+          ctx.strokeStyle = 'rgba(255,200,120,0.6)';
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(sp.x, sp.y);
+          for (let i = lo - 1; i >= Math.max(0, lo - 8); i--) {
+            const pt = project(actorX[a][i], actorY[a][i]);
+            ctx.lineTo(pt.x, pt.y);
+          }
+          ctx.stroke();
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = 'rgba(255,200,120,0.95)';
+          ctx.fill();
+        } else if (cls === UTIL_PROJ) {
+          ctx.fillStyle = 'rgba(196,123,255,0.95)';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, 2.5, 0, Math.PI * 2); ctx.fill();
+        }
+        ctx.restore();
+      }
+      } // end disabled heuristic
+    }
+
+    // === Trails for player actors ===
+    // Walk back through raw samples until time-gap exceeds TRAIL_SEC OR a
+    // stale gap (>STALE_GAP_SEC) is hit (which marks death — don't trail
+    // across that into the previous life).
+    if (trailsOn) {
+      const tNow = clockBySample[sTarget] || 0;
+      const trailStartSec = Math.max(curRound.startBombSec, tNow - TRAIL_SEC);
+      for (const a of playerActorIdxs) {
+        const here = getActorPos(a, sTarget);
+        if (!here || here.stale) continue;
+        const arr = actorStream[a];
+        // upper bound in the actor's array
+        let hi = arr.length - 1;
+        if (sTarget < arr[hi]) {
+          let lo = 0;
+          while (lo < hi) {
+            const mid = (lo + hi) >> 1;
+            if (arr[mid] < sTarget) lo = mid + 1; else hi = mid;
+          }
+        }
+        ctx.beginPath();
+        const sNow = project(here.wx, here.wy);
+        ctx.moveTo(sNow.x, sNow.y);
+        let prevT = tNow;
+        for (let i = hi; i >= 0; i--) {
+          const sIdx = arr[i];
+          if (sIdx < curRound.startSample) break;
+          const tThen = clockBySample[sIdx] || 0;
+          if (tThen < trailStartSec) break;
+          // refuse to trail across stale gaps (death → previous life)
+          if (prevT - tThen > STALE_GAP_SEC) break;
+          prevT = tThen;
+          const sp = project(actorX[a][i], actorY[a][i]);
+          ctx.lineTo(sp.x, sp.y);
+        }
+        ctx.strokeStyle = colorForPlayer(a);
+        ctx.globalAlpha = 0.55; ctx.lineWidth = 1.8;
+        ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+        ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // === Player dots with agent icons ==========================================
+    // Bound actor → puuid → match-details player → agent icon. Drop the
+    // misleading velocity-based "facing" arrow entirely. Real aim direction
+    // only exists at kill moments (viewRadians from match-details), so we
+    // render that as a separate cone overlay below.
+    const DOT_R = 12; // px radius of player marker
+    for (const a of playerActorIdxs) {
+      const p = getActorPos(a, sTarget); if (!p) continue;
+      const sp = project(p.wx, p.wy);
+      const col = colorForPlayer(a);
+      const pl = actorPlayer(a);
+      const agent = pl ? agentMeta(pl.characterId) : null;
+
+      if (p.stale) {
+        // Dead body marker — visible briefly so you see WHERE they died, then
+        // fully hidden. STALE_GAP_SEC (0.6s) + DEAD_SHOW_SEC (1.5s) = ~2s total
+        // visible after the actor's last sample, well within the last-kill
+        // round-end window so even the last person to die still disappears.
+        const DEAD_SHOW_SEC = 1.5;
+        if ((p.staleFor || 0) > DEAD_SHOW_SEC) continue;
+        const fade = 1 - (p.staleFor || 0) / DEAD_SHOW_SEC;
+        ctx.globalAlpha = 0.55 * fade;
+        ctx.font = '16px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillStyle = col;
+        ctx.fillText('✕', sp.x, sp.y);
+        ctx.globalAlpha = 1;
+        continue;
+      }
+
+      // Halo + colored ring
+      ctx.shadowColor = col; ctx.shadowBlur = 10;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, DOT_R + 1, 0, Math.PI * 2);
+      ctx.fillStyle = col; ctx.fill();
+      ctx.shadowBlur = 0;
+      // Agent icon clipped to a circle
+      const img = pl ? agentIconImgs[pl.characterId] : null;
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, DOT_R - 1, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.drawImage(img, sp.x - DOT_R, sp.y - DOT_R, DOT_R * 2, DOT_R * 2);
+        ctx.restore();
+      } else {
+        // fallback dot
+        ctx.beginPath(); ctx.arc(sp.x, sp.y, DOT_R - 2, 0, Math.PI * 2);
+        ctx.fillStyle = '#0a0c12'; ctx.fill();
+      }
+      // dark outline
+      ctx.strokeStyle = '#0a0c12'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(sp.x, sp.y, DOT_R, 0, Math.PI * 2); ctx.stroke();
+
+      // Direction indicator: short team-colored line. Prefer REAL aim
+      // (viewRadians from match-details, sampled at every kill moment for
+      // every player), falling back to velocity when no nearby kill exists.
+      // This fixes "strafe-peek = 90° off" — at kill time we use what they
+      // were really looking at.
+      if (arrowsOn) {
+        let yaw = realAimAt(a, tBomb);
+        if (yaw === null) yaw = getActorFacing(a, sTarget);
+        yaw = smoothYaw(a, yaw);
+        if (yaw !== null) {
+          const sNext = project(p.wx + 250 * Math.cos(yaw), p.wy + 250 * Math.sin(yaw));
+          const ddx = sNext.x - sp.x, ddy = sNext.y - sp.y;
+          const mag = Math.hypot(ddx, ddy);
+          if (mag > 0.5) {
+            const ux = ddx / mag, uy = ddy / mag;
+            const startX = sp.x + ux * DOT_R, startY = sp.y + uy * DOT_R;
+            const endX = sp.x + ux * (DOT_R + 10), endY = sp.y + uy * (DOT_R + 10);
+            ctx.strokeStyle = col;
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+          }
+        }
+      }
+    }
+
+    // === Real aim cones at kill moments (uses viewRadians, REAL aim) =========
+    // For each currently-rendering kill, draw a thin line from killer position
+    // toward where they were looking (their viewRadians at moment of kill).
+    // This is GROUND TRUTH aim, not the velocity guess.
+    if (arrowsOn) {
+      for (const kk of realKills) {
+        if (kk.round !== curRoundIdx) continue;
+        const dt = tBomb - kk.bombSec;
+        if (dt < 0 || dt > 2.0) continue; // only at-kill
+        const killerLoc = kk.playerLocations.find(pl => pl.subject === kk.killer);
+        if (!killerLoc) continue;
+        const yaw = killerLoc.viewRadians;
+        // Unreal yaw convention: 0 = +X, increasing clockwise looking down.
+        // Convert to standard math angle (counter-clockwise from +X).
+        const fx = killerLoc.location.x + 1200 * Math.cos(yaw);
+        const fy = killerLoc.location.y + 1200 * Math.sin(yaw);
+        const sk = project(killerLoc.location.x, killerLoc.location.y);
+        const sf = project(fx, fy);
+        ctx.globalAlpha = (1 - dt / 2.0);
+        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(sk.x, sk.y); ctx.lineTo(sf.x, sf.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+      }
+    }
+
+    // === Kills from match-details ==============================================
+    // STRICT temporal rendering: only paint a kill marker if the kill happened
+    // within the last KILL_FADE_SEC. No "pre-draw" of future kills, no
+    // persistent ghost X marks once the kill has fully faded.
+    const KILL_FADE_SEC = 4;
+    for (const kk of realKills) {
+      if (kk.round !== curRoundIdx) continue;
+      const dt = tBomb - kk.bombSec;
+      if (dt < 0) continue;              // future kill — do NOT pre-draw
+      if (dt > KILL_FADE_SEC) continue;  // long past — gone
+      const sp = project(kk.vx, kk.vy);
+      const killerP = mdPlayers.find(p => p.subject === kk.killer);
+      const teamCol = killerP?.teamId === 'Blue' ? 'rgba(90,200,250,1)' : 'rgba(255,82,82,1)';
+      const fade = 1 - dt / KILL_FADE_SEC;       // 1 → 0
+      ctx.globalAlpha = fade;
+      ctx.strokeStyle = teamCol;
+      ctx.lineWidth = 2.4;
+      const sz = 8 + (1 - Math.min(1, dt / 0.4)) * 6; // pop in first 0.4s
+      ctx.beginPath();
+      ctx.moveTo(sp.x - sz, sp.y - sz); ctx.lineTo(sp.x + sz, sp.y + sz);
+      ctx.moveTo(sp.x + sz, sp.y - sz); ctx.lineTo(sp.x - sz, sp.y + sz);
+      ctx.stroke();
+      // pulse halo for first 1s
+      if (dt < 1) {
+        ctx.globalAlpha = (1 - dt) * 0.45;
+        ctx.fillStyle = teamCol;
+        ctx.beginPath();
+        ctx.arc(sp.x, sp.y, 10 + (1 - dt) * 20, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+    }
+
+    // === Spike: plant + defuse with REAL Valorant timings =====================
+    // plant takes 4s, defuse takes 3.5s (half) or 7s (full). match-details
+    // gives us the COMPLETION time, so we draw a growing arc in the lead-up.
+    const PLANT_DUR = 4.0;
+    const DEFUSE_DUR_FULL = 7.0;   // no halfway interrupt
+    const DEFUSE_DUR_HALF = 3.5;   // already halfway when resumed
+    function drawProgressRing(sx, sy, radius, progress, color) {
+      // background ring
+      ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(sx, sy, radius, 0, Math.PI * 2); ctx.stroke();
+      // progress arc, starting at 12 o'clock going clockwise
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, -Math.PI / 2, -Math.PI / 2 + progress * Math.PI * 2);
+      ctx.stroke();
+    }
+    const rd = realRounds[curRoundIdx];
+    if (rd) {
+      const plantSec = (rd.plantRoundTime && rd.plantRoundTime > 0)
+        ? curRound.startBombSec + rd.plantRoundTime / 1000 : null;
+      const defuseSec = (rd.defuseRoundTime && rd.defuseRoundTime > 0)
+        ? curRound.startBombSec + rd.defuseRoundTime / 1000 : null;
+      // PLANT IN PROGRESS — show arc + spike icon at low opacity
+      if (rd.plantLocation && plantSec !== null && tBomb >= plantSec - PLANT_DUR && tBomb < plantSec) {
+        const sp = project(rd.plantLocation.x, rd.plantLocation.y);
+        const progress = 1 - (plantSec - tBomb) / PLANT_DUR;
+        if (spikeImg && spikeImg.complete) {
+          ctx.globalAlpha = 0.55;
+          const sz = 22;
+          ctx.drawImage(spikeImg, sp.x - sz / 2, sp.y - sz / 2, sz, sz);
+          ctx.globalAlpha = 1;
+        }
+        drawProgressRing(sp.x, sp.y, 18, progress, 'rgba(255,178,64,0.95)');
+        // small "PLANTING" label
+        ctx.font = 'bold 9px ui-monospace, monospace';
+        ctx.fillStyle = 'rgba(255,178,64,0.95)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(`PLANTING ${(PLANT_DUR - (plantSec - tBomb)).toFixed(1)}s`, sp.x, sp.y + 24);
+      }
+      // Spike on the ground from plant → defuse (or forever if it detonates)
+      if (rd.plantLocation && plantSec !== null && tBomb >= plantSec) {
+        const stillPlanted = defuseSec === null || tBomb < defuseSec;
+        if (stillPlanted) {
+          const sp = project(rd.plantLocation.x, rd.plantLocation.y);
+          const sincePlant = tBomb - plantSec;
+          // pulse subtly to indicate it's ticking (faster as time goes on)
+          const pulseSpeed = 4 + Math.min(8, sincePlant / 5);
+          const pulse = 0.7 + 0.3 * Math.sin(sincePlant * pulseSpeed);
+          ctx.globalAlpha = pulse;
+          if (spikeImg && spikeImg.complete) {
+            const sz = 24;
+            ctx.drawImage(spikeImg, sp.x - sz/2, sp.y - sz/2, sz, sz);
+          } else {
+            ctx.font = '20px system-ui';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillStyle = 'rgba(255,178,64,0.95)';
+            ctx.fillText('🧨', sp.x, sp.y);
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      // DEFUSE IN PROGRESS — show arc + ✓ icon. Default to full 7s defuse;
+      // we can't tell half vs full from match-details without extra info.
+      const defuseDur = DEFUSE_DUR_FULL;
+      if (rd.defuseLocation && defuseSec !== null && tBomb >= defuseSec - defuseDur && tBomb < defuseSec) {
+        const sp = project(rd.defuseLocation.x, rd.defuseLocation.y);
+        const progress = 1 - (defuseSec - tBomb) / defuseDur;
+        drawProgressRing(sp.x, sp.y, 18, progress, 'rgba(64,220,150,0.95)');
+        ctx.font = 'bold 9px ui-monospace, monospace';
+        ctx.fillStyle = 'rgba(64,220,150,0.95)';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+        ctx.fillText(`DEFUSING ${(defuseDur - (defuseSec - tBomb)).toFixed(1)}s`, sp.x, sp.y + 24);
+      }
+      // Defuse success flash for 3s after completion
+      if (rd.defuseLocation && defuseSec !== null && tBomb >= defuseSec && tBomb < defuseSec + 3) {
+        const sp = project(rd.defuseLocation.x, rd.defuseLocation.y);
+        const fade = 1 - (tBomb - defuseSec) / 3;
+        ctx.globalAlpha = fade;
+        ctx.fillStyle = 'rgba(64,220,150,0.95)';
+        ctx.font = '20px system-ui';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('✓', sp.x, sp.y);
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
+  // === Controls + loop ========================================================
+  const scrub = document.getElementById('scrub');
+  const timerEl = document.getElementById('timer');
+  const timerMsEl = document.getElementById('timer-ms');
+  const rdEl = document.getElementById('rd');
+  const playBtn = document.getElementById('playBtn');
+  const speedBtn = document.getElementById('speed');
+  const trailsBtn = document.getElementById('trails');
+  const arrowsBtn = document.getElementById('arrows');
+  const utilBtn = document.getElementById('util');
+
+  // Playback is driven by round bomb-clock SECONDS. 1× = real game speed.
+  // We track virtualSec (seconds offset into the current round), then on
+  // every frame map that to a stream index via clockBySample bisect.
+  let curRound = rounds[0];
+  let curRoundIdx = 0;
+  let curStreamIdx = curRound.startSample;
+  let playing = false, speed = 1;
+  let virtualSec = 0;
+
+  // Slider in tenths of a second.
+  const SCRUB_PER_SEC = 10;
+
+  function streamIdxForSecInRound(sec) {
+    const want = curRound.startBombSec + sec;
+    let lo = curRound.startSample, hi = curRound.endSample;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if ((clockBySample[mid] || 0) < want) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  }
+
+  function applyRound(rIdx) {
+    curRoundIdx = Math.max(0, Math.min(rounds.length - 1, rIdx));
+    curRound = rounds[curRoundIdx];
+    rdEl.textContent = curRound.label;
+    [...roundsEl.querySelectorAll('button')].forEach((b, i) => b.classList.toggle('active', i === curRoundIdx));
+    scrub.min = 0;
+    scrub.max = Math.ceil(curRound.durationSec * SCRUB_PER_SEC);
+    setVirtualSec(0);
+    paintFeed();
+  }
+  function setVirtualSec(sec) {
+    const maxSec = curRound.durationSec;
+    if (sec < 0) sec = 0;
+    if (sec > maxSec) sec = maxSec;
+    virtualSec = sec;
+    curStreamIdx = streamIdxForSecInRound(sec);
+    scrub.value = Math.floor(sec * SCRUB_PER_SEC);
+    const m = Math.floor(sec / 60), s = sec - m * 60;
+    timerEl.textContent = `${m}:${(Math.floor(s) + '').padStart(2, '0')}`;
+    timerMsEl.textContent = '.' + Math.floor((s % 1) * 10);
+    render();
+    if (typeof highlightFeed === 'function') highlightFeed();
+  }
+  function setFrame() { /* deprecated — kept as no-op for legacy callers */ }
+
+  scrub.addEventListener('input', () => setVirtualSec(+scrub.value / SCRUB_PER_SEC));
+  playBtn.addEventListener('click', () => {
+    if (virtualSec >= curRound.durationSec - 0.05) setVirtualSec(0);
+    playing = !playing;
+    playBtn.textContent = playing ? '❚❚' : '▶';
+  });
+  speedBtn.addEventListener('click', () => {
+    const speeds = [0.5, 1, 2, 4, 8];
+    speed = speeds[(speeds.indexOf(speed) + 1) % speeds.length];
+    speedBtn.textContent = speed + '×';
+  });
+  trailsBtn.classList.toggle('on', trailsOn);
+  arrowsBtn.classList.toggle('on', arrowsOn);
+  utilBtn.classList.toggle('on', utilOn);
+  trailsBtn.addEventListener('click', () => {
+    trailsOn = !trailsOn; trailsBtn.classList.toggle('on', trailsOn); saveToggle('trails', trailsOn); render();
+  });
+  arrowsBtn.addEventListener('click', () => {
+    arrowsOn = !arrowsOn; arrowsBtn.classList.toggle('on', arrowsOn); saveToggle('arrows', arrowsOn); render();
+  });
+  utilBtn.addEventListener('click', () => {
+    utilOn = !utilOn; utilBtn.classList.toggle('on', utilOn); saveToggle('util', utilOn); render();
+  });
+  document.getElementById('prev').addEventListener('click', () => applyRound(curRoundIdx - 1));
+  document.getElementById('next').addEventListener('click', () => applyRound(curRoundIdx + 1));
+  roundsEl.addEventListener('click', e => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    applyRound(+btn.dataset.r);
+  });
+  feedEl.addEventListener('click', e => {
+    const row = e.target.closest('.frow'); if (!row) return;
+    const rIdx = +row.dataset.r, sec = +row.dataset.s;
+    if (rIdx !== curRoundIdx) applyRound(rIdx);
+    setVirtualSec(sec);
+  });
+
+  let lastT = performance.now();
+  function loop(t) {
+    const dt = t - lastT; lastT = t;
+    if (playing) {
+      const dsec = (dt / 1000) * speed;
+      const next = virtualSec + dsec;
+      if (next >= curRound.durationSec) {
+        setVirtualSec(curRound.durationSec);
+        playing = false; playBtn.textContent = '▶';
+      } else {
+        setVirtualSec(next);
+      }
+    }
+    requestAnimationFrame(loop);
+  }
+
+  applyRound(0);
+  step(100, '');
+  document.getElementById('loading').remove();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
