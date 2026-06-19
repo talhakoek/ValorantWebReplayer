@@ -6,7 +6,9 @@ get a browser-based scrubbable minimap viewer out. **Windows-only.**
 > Not affiliated with, endorsed by, or sponsored by Riot Games. Valorant and
 > the Valorant logo are trademarks of Riot Games, Inc.
 
-https://github.com/talhakoek/ValorantWebReplayer/blob/main/docs/demo.mov
+https://github.com/user-attachments/assets/78509fcc-61fa-4a1a-b6e5-8f59f1191c63
+
+
 *(if the embedded video doesn't render, [open `docs/demo.mov`](docs/demo.mov)
 directly)*
 
