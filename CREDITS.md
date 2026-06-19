@@ -3,16 +3,19 @@
 This project is a thin orchestration + viewer layer on top of work done by
 others. Most of the heavy lifting belongs to:
 
-## [`michel-giehl/ValorantReplayParser`](https://github.com/michel-giehl/ValorantReplayParser)
+## [`michel-giehl/ValorantReplayParserPlayground`](https://github.com/michel-giehl/ValorantReplayParserPlayground)
 
 The actual `.vrf` parser — built on top of the FortniteReplayReader fork,
 extended with Valorant-specific net-field exports for `BombGameState`,
 `BombPlayerState`, and `ReplaysClientReceiveRemoteCharacterUpdatesSingleArrayNoAutonomous`
 (which is where player movement lives).
 
-MIT licensed. The binary shipped in our GitHub Release is built from upstream
-plus a small `Program.cs` wrapper that adds `--full` mode + channel-event
-JSONL dumping.
+MIT licensed. The binary shipped in our GitHub Release is built from this
+fork-with-patch:
+[`talhakoek/ValorantReplayParserPlayground @ revamped-channel-hooks`](https://github.com/talhakoek/ValorantReplayParserPlayground/tree/revamped-channel-hooks)
+([diff vs upstream](https://github.com/talhakoek/ValorantReplayParserPlayground/compare/master...revamped-channel-hooks))
+— a ~120-line addition that exposes channel-open events as JSONL so
+ability spawn locations fall out of the parser for free.
 
 ## [`OozSharp`](https://github.com/jamesbloom/OozSharp)
 

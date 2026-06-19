@@ -61,21 +61,27 @@ server is plain Node, and the viewer runs in your existing browser.
 
 ### Get the parser binary
 
-The parser comes from
-[`michel-giehl/ValorantReplayParser`](https://github.com/michel-giehl/ValorantReplayParser).
-Two ways to get it:
+The parser is [`michel-giehl/ValorantReplayParserPlayground`](https://github.com/michel-giehl/ValorantReplayParserPlayground)
+plus a ~120-line patch that exposes channel-open events so we can pull
+ability locations out of actor spawns (abilities in Valorant ARE actors —
+`Patch_Phoenix_MolotovFire_C`, `Smoke_Production_Astra_C`, etc.).
+
+Patched source: [`talhakoek/ValorantReplayParserPlayground @ revamped-channel-hooks`](https://github.com/talhakoek/ValorantReplayParserPlayground/tree/revamped-channel-hooks)
+· [diff vs upstream](https://github.com/talhakoek/ValorantReplayParserPlayground/compare/master...revamped-channel-hooks)
+
+Two ways to get the binary:
 
 1. **Download the latest release** from this repo and drop the included
    `ValorantReplayParser.exe` into `.\bin\`.
-2. **Or build it yourself**:
+2. **Or build it yourself** from the patched branch:
    ```powershell
-   git clone https://github.com/michel-giehl/ValorantReplayParser.git
-   cd ValorantReplayParser
+   git clone -b revamped-channel-hooks https://github.com/talhakoek/ValorantReplayParserPlayground.git
+   cd ValorantReplayParserPlayground
    dotnet publish src/ValorantReplayParser/ValorantReplayParser.csproj `
      -c Release -r win-x64 --self-contained true `
      /p:PublishSingleFile=true /p:IncludeNativeLibrariesForSelfExtract=true `
      -o ..\publish
-   Copy-Item ..\publish\ValorantReplayParser.exe .\bin\
+   Copy-Item ..\publish\ValorantReplayParser.exe ..\ValorantWebReplayer\bin\
    ```
 
 ## Usage
